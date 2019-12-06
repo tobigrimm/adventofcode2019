@@ -3,8 +3,6 @@
 import networkx as nx
 import sys
 
-def calc_distance():
-    pass
 
 def main(inputfile):
     G = nx.Graph()
@@ -25,5 +23,6 @@ def main(inputfile):
         distance += spl[node1][node2]
 
     print("part 1: orbits: %s" %distance)
+    print("part2: distance between YOU and SAN: %s" % spl['YOU']['SAN'])
 if __name__ == "__main__":
     main(sys.argv[1])
