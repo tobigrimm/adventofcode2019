@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import queue
+
 with open("input") as inputfile:
     orig_instructions = [int(i) for i in inputfile.readline().strip().split(",")]
 
@@ -13,23 +15,21 @@ with open("input") as inputfile:
 
     """
 
-    # TODO add input/output counters?
-OPCODES = {1: {'len': 3, 'in': 2, 'out': 1, 'func': lambda x,y : x+y},
-        2: {'len': 3, 'in': 2, 'out': 1, 'func': lambda x,y : x*y},
-        3: {'len': 1, 'in': 0, 'out': 1, 'func': input},
-        4: {'len': 1, 'in': 1, 'out': 0, 'func': lambda x: print("print",x)},
-        5: {'len': 2, 'in': 2, 'out': 0, 'func': lambda x: True if x!=0 else False},
-        6: {'len': 2, 'in': 2, 'out': 0, 'func': lambda x: True if x==0 else False},
-        7: {'len': 3, 'in': 2, 'out': 1, 'func': lambda x,y: 1 if x<y else 0},
-        8: {'len': 3, 'in': 2, 'out': 1, 'func': lambda x,y: 1 if x==y else 0},
-        99: {'len': 0, 'func': ''},
-        }
-
-def calculate_output(memory, inputbuffer):
+OPCODES = {1: {'len': 3, 'in': 2, 'out': 1, 'func': lambda x,y: x+y},
+           2: {'len': 3, 'in': 2, 'out': 1, 'func': lambda x,y: x*y},
+           3: {'len': 1, 'in': 0, 'out': 1,}, 
+           4: {'len': 1, 'in': 1, 'out': 0},
+           5: {'len': 2, 'in': 2, 'out': 0, 'func': lambda x: True if x!=0 else False},
+           6: {'len': 2, 'in': 2, 'out': 0, 'func': lambda x: True if x==0 else False},
+           7: {'len': 3, 'in': 2, 'out': 1, 'func': lambda x,y: 1 if x<y else 0},
+           8: {'len': 3, 'in': 2, 'out': 1, 'func': lambda x,y: 1 if x==y else 0},
+           99: {'len': 0, 'func': ''},
+           }
+   
+def calculate_output(memory, inputqueue, outputqueue):
     IP = 0
    
     ins = 0
-    output = []
     while IP <= len(memory):
 
         # last two segments are the instructions
@@ -59,10 +59,8 @@ def calculate_output(memory, inputbuffer):
         # input only has an parameter to write to, no checking necesarry:
         # optional:  enable an inputbuffer to get inputs from
         if ins == 3:
-            if len(inputbuffer)>0:
-                inputchar = inputbuffer.pop()
-            else:
-                inputchar = OPCODES[ins]['func']()
+            inputchar = inputqueue.get(block=True)
+            #print("input", inputchar)
             memory[params[0]] = int(inputchar)
 
         # for the rest of the instructions, only check here for param 0 & 1:
@@ -76,7 +74,7 @@ def calculate_output(memory, inputbuffer):
             memory[params[2]] = OPCODES[ins]['func'](params[0], params[1])
         if ins == 4:
             # printout the value or add it to the output buffer
-            output.append(params[0])
+            outputqueue.put(params[0])
         
         NEW_IP = IP + OPCODES[ins]['len']+1
         
@@ -87,7 +85,7 @@ def calculate_output(memory, inputbuffer):
 
         IP = NEW_IP
 
-    return output
+    #return output
 
 def fuzz_inputs(target):
     # run calculate_output until target is reached
@@ -115,8 +113,13 @@ for i, mutation in enumerate(mutations):
     instructions = list(orig_instructions)
     initial_output = 0
     for amplifier in mutation:
-        output = calculate_output(instructions,[initial_output, amplifier])
-        initial_output = output[0]
+        inputqueue = queue.Queue()
+        outputqueue = queue.Queue()
+        inputqueue.put(amplifier)
+        inputqueue.put(initial_output)
+        output = calculate_output(instructions,inputqueue, outputqueue)
+        initial_output = outputqueue.get()
+        #print("out",initial_output)
     results[i] = initial_output
 
 import operator
