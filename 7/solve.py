@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
 import queue
+import threading
+import itertools
+import operator
 
 with open("input") as inputfile:
     orig_instructions = [int(i) for i in inputfile.readline().strip().split(",")]
@@ -87,42 +90,39 @@ def calculate_output(memory, inputqueue, outputqueue):
 
     #return output
 
-def fuzz_inputs(target):
-    # run calculate_output until target is reached
-    
-    for noun in range(99):
-        for verb in range(99):
-            instructions = list(orig_instructions)
-            # patching:
-            instructions[1] = noun
-            instructions[2] = verb
-            value = calculate_output(instructions)
-            if value == target:
-                return noun*100+verb
 # part1
 
 #get highest thruster output from mutations:
 
 
-import itertools
-mutations = list(itertools.permutations([0, 1, 2, 3, 4]))
+def calc_thruster(phase):
+    instructions = []
+    queues = []
+    for i,amplifier in enumerate(phase):
+        #setup the queues
+        queues.append(queue.Queue())
+        queues[i].put(amplifier)
+        instructions.append(list(orig_instructions))
+    # put the initial output for first amplifier in
+    queues[0].put(0)
+    #with concurrent.futures.ThreadPoolExecutor() as executor:
+    for j in range(5):
+        calculate_output(instructions[j],queues[j], queues[(j+1)%5])
+    #print("out",initial_output)
+    output = queues[0].get()
+    print(output)
+    return outpu outputt # TODO get result from message queue?
+    #return results
 
-results = {}
+def mutate(mutations):
+    results = {}
+    for i, mutation in enumerate(mutations):
+        results[i] = calc_thruster(mutation)
+    return results
 
-for i, mutation in enumerate(mutations):
-    instructions = list(orig_instructions)
-    initial_output = 0
-    for amplifier in mutation:
-        inputqueue = queue.Queue()
-        outputqueue = queue.Queue()
-        inputqueue.put(amplifier)
-        inputqueue.put(initial_output)
-        output = calculate_output(instructions,inputqueue, outputqueue)
-        initial_output = outputqueue.get()
-        #print("out",initial_output)
-    results[i] = initial_output
+mutation_part1 = list(itertools.permutations([0, 1, 2, 3, 4]))
+results = mutate(mutation_part1)
 
-import operator
 # get max from results:
 maxi = max(results.items(), key=operator.itemgetter(1))[0]
-print("permutation: %s, result: %s" % (mutations[maxi], results[maxi]))
+print("permutation: %s, result: %s" % (mutation_part1[maxi], results[maxi]))
