@@ -4,8 +4,10 @@ import queue
 import threading
 import itertools
 import operator
+import concurrent.futures
+import sys
 
-with open("input") as inputfile:
+with open(sys.argv[1]) as inputfile:
     orig_instructions = [int(i) for i in inputfile.readline().strip().split(",")]
 
 
@@ -33,6 +35,7 @@ def calculate_output(memory, inputqueue, outputqueue):
     IP = 0
    
     ins = 0
+    lastprint = 0
     while IP <= len(memory):
 
         # last two segments are the instructions
@@ -53,8 +56,8 @@ def calculate_output(memory, inputqueue, outputqueue):
                 modes.append(0)
         if ins == 99:
             # ALL MACHINES STOP
+            return lastprint
             break
-
         # IMPORTANT:
         #  Parameters that an instruction writes to will never be in immediate mode.
 
@@ -78,6 +81,7 @@ def calculate_output(memory, inputqueue, outputqueue):
         if ins == 4:
             # printout the value or add it to the output buffer
             outputqueue.put(params[0])
+            lastprint = params[0] 
         
         NEW_IP = IP + OPCODES[ins]['len']+1
         
@@ -98,6 +102,7 @@ def calculate_output(memory, inputqueue, outputqueue):
 def calc_thruster(phase):
     instructions = []
     queues = []
+    workers = []
     for i,amplifier in enumerate(phase):
         #setup the queues
         queues.append(queue.Queue())
@@ -105,13 +110,15 @@ def calc_thruster(phase):
         instructions.append(list(orig_instructions))
     # put the initial output for first amplifier in
     queues[0].put(0)
-    #with concurrent.futures.ThreadPoolExecutor() as executor:
-    for j in range(5):
-        calculate_output(instructions[j],queues[j], queues[(j+1)%5])
-    #print("out",initial_output)
-    output = queues[0].get()
-    print(output)
-    return outpu outputt # TODO get result from message queue?
+    # lets start a worker for each amplifier, they will block when waiting for an input
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for j in range(len(phase)):
+            workers.append(executor.submit(calculate_output, instructions[j], queues[j], queues[(j+1)%len(phase)]))
+        # lets get the output from the return of the last worker (returns the last "printed" value)
+        output = workers[-1].result()
+    # last value in the first queue will be the result
+    #output = queues[0].get()
+    return output # TODO get result from message queue?
     #return results
 
 def mutate(mutations):
@@ -125,4 +132,11 @@ results = mutate(mutation_part1)
 
 # get max from results:
 maxi = max(results.items(), key=operator.itemgetter(1))[0]
-print("permutation: %s, result: %s" % (mutation_part1[maxi], results[maxi]))
+print("part1 - permutation: %s, result: %s" % (mutation_part1[maxi], results[maxi]))
+
+mutation_part2 = list(itertools.permutations([5, 6, 7, 8, 9]))
+results = mutate(mutation_part2)
+
+# get max from results:
+maxi = max(results.items(), key=operator.itemgetter(1))[0]
+print("part2 - permutation: %s, result: %s" % (mutation_part2[maxi], results[maxi]))
