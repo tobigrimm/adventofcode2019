@@ -28,21 +28,27 @@ OPCODES = {1: {'len': 3, 'in': 2, 'out': 1, 'func': lambda x,y: x+y},
            6: {'len': 2, 'in': 2, 'out': 0, 'func': lambda x: True if x==0 else False},
            7: {'len': 3, 'in': 2, 'out': 1, 'func': lambda x,y: 1 if x<y else 0},
            8: {'len': 3, 'in': 2, 'out': 1, 'func': lambda x,y: 1 if x==y else 0},
+           # reset relative base
+           9: {'len': 1, 'in': 1, 'out': 0},
            99: {'len': 0, 'func': ''},
            }
    
 def calculate_output(memory, inputqueue, outputqueue):
+    # Instruction Pointer
     IP = 0
+    # Relative Base Pointer
+    BP = 0
    
     ins = 0
     lastprint = 0
     while IP <= len(memory):
-
         # last two segments are the instructions
         ins = int(str(memory[IP])[-2:])
         # check if we actually have a proper opcode
-        assert ins in OPCODES.keys()
-
+        try:
+            assert ins in OPCODES.keys()
+        except AssertionError as e:
+            print(IP, memory, ins, e)
         # depending on the number of parameters, the segments in front are for parameter handling (direct/indirect mode)
         params = [] 
         modes = []
@@ -54,6 +60,7 @@ def calculate_output(memory, inputqueue, outputqueue):
                 modes.append(int(str(memory[IP])[:-2][::-1][i-1]))
             else:
                 modes.append(0)
+        print("BEFOR instruction %s mode %s params %s" % (ins, modes, params))
         if ins == 99:
             # ALL MACHINES STOP
             return lastprint
@@ -62,6 +69,24 @@ def calculate_output(memory, inputqueue, outputqueue):
         #  Parameters that an instruction writes to will never be in immediate mode.
 
 
+        # for the rest of the instructions, only check here for param 0 & 1:
+            # if modes != 1, we have to load the value from the memory location params points to
+            # the target address and its mode get handled seperately
+        for j in range(OPCODES[ins]['in']):
+            if modes[j] == 0:
+                params[j] = memory[params[j]]
+            if modes[j] == 2:
+                # adjust relative instruction by the relative base pointer BP
+                params[j] = memory[BP+params[j]]
+        print("AFTER instruction %s mode %s params %s" % (ins, modes, params))
+
+        # writing is only possible to absolute or relative modes       
+        if ins in (1,2,7,8):
+            temp_BP = 0
+            if modes[2] == 2:
+                temp_BP = BP
+            memory[params[2]+temp_BP] = OPCODES[ins]['func'](params[0], params[1])
+            print("new memory at %i: %i" % (params[2]+temp_BP, memory[params[2]+temp_BP] )) 
         # input only has an parameter to write to, no checking necesarry:
         # optional:  enable an inputbuffer to get inputs from
         if ins == 3:
@@ -69,19 +94,15 @@ def calculate_output(memory, inputqueue, outputqueue):
             #print("input", inputchar)
             memory[params[0]] = int(inputchar)
 
-        # for the rest of the instructions, only check here for param 0 & 1:
-            # if modes != 1, we have to load the value from the memory location params points to
-        for j in range(OPCODES[ins]['in']):
-            if not modes[j]:
-                params[j] = memory[params[j]]
-
-
-        if ins in (1,2,7,8):
-            memory[params[2]] = OPCODES[ins]['func'](params[0], params[1])
         if ins == 4:
             # printout the value or add it to the output buffer
             outputqueue.put(params[0])
-            lastprint = params[0] 
+            lastprint = params[0]
+            print("print", params[0])
+        if ins == 9:
+            # set the relative base to the argument
+            BP = params[0]
+            print("NEW BP", params[0])
         
         NEW_IP = IP + OPCODES[ins]['len']+1
         
@@ -127,16 +148,14 @@ def mutate(mutations):
         results[i] = calc_thruster(mutation)
     return results
 
-mutation_part1 = list(itertools.permutations([0, 1, 2, 3, 4]))
-results = mutate(mutation_part1)
 
-# get max from results:
-maxi = max(results.items(), key=operator.itemgetter(1))[0]
-print("part1 - permutation: %s, result: %s" % (mutation_part1[maxi], results[maxi]))
 
-mutation_part2 = list(itertools.permutations([5, 6, 7, 8, 9]))
-results = mutate(mutation_part2)
+inputq = queue.Queue()
+inputq.put(1)
+outputq = queue.Queue()
+additional_mem = [0] * 999
+instructions = list(orig_instructions)
+instructions.extend(additional_mem)
 
-# get max from results:
-maxi = max(results.items(), key=operator.itemgetter(1))[0]
-print("part2 - permutation: %s, result: %s" % (mutation_part2[maxi], results[maxi]))
+print("Value at adress 0 after running: %s" % calculate_output(instructions, inputq, outputq))
+print(list(outputq.queue))
