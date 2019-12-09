@@ -45,10 +45,7 @@ def calculate_output(memory, inputqueue, outputqueue):
         # last two segments are the instructions
         ins = int(str(memory[IP])[-2:])
         # check if we actually have a proper opcode
-        try:
-            assert ins in OPCODES.keys()
-        except AssertionError as e:
-            print(IP, memory, ins, e)
+        assert ins in OPCODES.keys()
         # depending on the number of parameters, the segments in front are for parameter handling (direct/indirect mode)
         params = [] 
         modes = []
@@ -60,7 +57,6 @@ def calculate_output(memory, inputqueue, outputqueue):
                 modes.append(int(str(memory[IP])[:-2][::-1][i-1]))
             else:
                 modes.append(0)
-        print("BEFOR instruction %s mode %s params %s" % (ins, modes, params))
         if ins == 99:
             # ALL MACHINES STOP
             return lastprint
@@ -78,7 +74,6 @@ def calculate_output(memory, inputqueue, outputqueue):
             if modes[j] == 2:
                 # adjust relative instruction by the relative base pointer BP
                 params[j] = memory[BP+params[j]]
-        print("AFTER instruction %s mode %s params %s" % (ins, modes, params))
 
         # writing is only possible to absolute or relative modes       
         if ins in (1,2,7,8):
@@ -86,23 +81,23 @@ def calculate_output(memory, inputqueue, outputqueue):
             if modes[2] == 2:
                 temp_BP = BP
             memory[params[2]+temp_BP] = OPCODES[ins]['func'](params[0], params[1])
-            print("new memory at %i: %i" % (params[2]+temp_BP, memory[params[2]+temp_BP] )) 
         # input only has an parameter to write to, no checking necesarry:
         # optional:  enable an inputbuffer to get inputs from
         if ins == 3:
             inputchar = inputqueue.get(block=True)
             #print("input", inputchar)
-            memory[params[0]] = int(inputchar)
+            temp_BP = 0
+            if modes[0] == 2:
+                temp_BP = BP
+            memory[params[0]+temp_BP] = int(inputchar)
 
         if ins == 4:
             # printout the value or add it to the output buffer
             outputqueue.put(params[0])
             lastprint = params[0]
-            print("print", params[0])
         if ins == 9:
-            # set the relative base to the argument
-            BP = params[0]
-            print("NEW BP", params[0])
+            # increase the relative base by the argument
+            BP += params[0]
         
         NEW_IP = IP + OPCODES[ins]['len']+1
         
@@ -157,5 +152,16 @@ additional_mem = [0] * 999
 instructions = list(orig_instructions)
 instructions.extend(additional_mem)
 
+print("Part 1")
 print("Value at adress 0 after running: %s" % calculate_output(instructions, inputq, outputq))
 print(list(outputq.queue))
+
+print("Part 2")
+inputq = queue.Queue()
+inputq.put(2)
+outputq = queue.Queue()
+additional_mem = [0] * 999
+instructions = list(orig_instructions)
+instructions.extend(additional_mem)
+print("Value at adress 0 after running: %s" % calculate_output(instructions, inputq, outputq))
+
