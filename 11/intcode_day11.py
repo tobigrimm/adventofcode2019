@@ -85,7 +85,6 @@ def calculate_output(memory, inputqueue, outputqueue):
         # optional:  enable an inputbuffer to get inputs from
         if ins == 3:
             inputchar = inputqueue.get(block=True)
-            #print("input", inputchar)
             temp_BP = 0
             if modes[0] == 2:
                 temp_BP = BP
@@ -105,63 +104,98 @@ def calculate_output(memory, inputqueue, outputqueue):
             if OPCODES[ins]['func'](params[0]):
                 NEW_IP = params[1]
 
-
         IP = NEW_IP
 
     #return output
 
-# part1
+def draw_board(grid, inq, outq):
+    """draw on the board, track the coordinates of the robot and return new color of the next grid field"""
+    coord = (0,0)
+    cur_dir = 1 # start with abitrary definition of up :)
+    dir = [(-1,0),(0,-1),(1,0),(0,1)]  # list of delta_x, delta_y per direction. Order: LEFT, UP, RIGHT, DOWN rotate by getting the next index left/right :)
+    
+    # give out the color of the start coordinates
+    cur_color = grid[coord]
+    outq.put(cur_color)
+    
+    while True:
+        draw_command  = inq.get(block=True,timeout=2)
+        # kill the job after 2 seconds without input
+        move_command  = inq.get(block=True)
+        # draw command: 0 means to paint the panel black, and 1 means to paint the panel white.
+        # move command: 0 means it should turn left 90 degrees, and 1 means it should turn right 90 degrees.
+        
+        # draw current positon
+        grid[coord] = draw_command
 
-#get highest thruster output from mutations:
+        # move to next field
+        # turn left or right:
+        if move_command == 0:
+            cur_dir = (cur_dir - 1 ) % 4
+        elif move_command == 1:
+            cur_dir = (cur_dir + 1 ) % 4
+        
+        # move 1 "forward" in cur_dir
+        coord = (coord[0]+dir[cur_dir][0], coord[1]+dir[cur_dir][1])
+        cur_color = 0 # by default field is black
+        
+        if coord in grid.keys():
+            cur_color = grid[coord]
+        outq.put(cur_color)
 
+#
 
-def calc_thruster(phase):
+def calc_board(start=0):
+    """ start threads for the robot and the drawing function and return the drawed board coordinates"""
     instructions = []
-    queues = []
-    workers = []
-    for i,amplifier in enumerate(phase):
-        #setup the queues
-        queues.append(queue.Queue())
-        queues[i].put(amplifier)
-        instructions.append(list(orig_instructions))
-    # put the initial output for first amplifier in
-    queues[0].put(0)
-    # lets start a worker for each amplifier, they will block when waiting for an input
+    inqueue = queue.Queue()
+    outqueue = queue.Queue()
+    board_grid = {(0, 0):start} # dict of painted coordinates, by default all are black -> 0   key is coords: (x,y), value is color (0,0):0
+    instructions = list(orig_instructions)
+    additional_mem = [0] * 999
+    instructions.extend(additional_mem)
+    # lets start a worker for robot and the drawing grid, they will block when waiting for an input
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        for j in range(len(phase)):
-            workers.append(executor.submit(calculate_output, instructions[j], queues[j], queues[(j+1)%len(phase)]))
-        # lets get the output from the return of the last worker (returns the last "printed" value)
-        output = workers[-1].result()
-    # last value in the first queue will be the result
-    #output = queues[0].get()
-    return output # TODO get result from message queue?
-    #return results
-
-def mutate(mutations):
-    results = {}
-    for i, mutation in enumerate(mutations):
-        results[i] = calc_thruster(mutation)
-    return results
-
-
+        robot = executor.submit(calculate_output, instructions, inqueue, outqueue)
+        board = executor.submit(draw_board, board_grid, outqueue, inqueue)
+    # lets wait till the robot finishes to get
+        if robot.result():
+            print("len:", len(board_grid))
+    return board_grid
 
 inputq = queue.Queue()
-inputq.put(1)
+inputq.put(0)
 outputq = queue.Queue()
-additional_mem = [0] * 999
-instructions = list(orig_instructions)
-instructions.extend(additional_mem)
 
 print("Part 1")
-print("Value at adress 0 after running: %s" % calculate_output(instructions, inputq, outputq))
-print(list(outputq.queue))
+print("Painted grid cells: %s" % len(calc_board()))
 
 print("Part 2")
-inputq = queue.Queue()
-inputq.put(2)
-outputq = queue.Queue()
-additional_mem = [0] * 999
-instructions = list(orig_instructions)
-instructions.extend(additional_mem)
-print("Value at adress 0 after running: %s" % calculate_output(instructions, inputq, outputq))
+painted_cells = calc_board(start=1)
+from operator import itemgetter
+min_x = min(painted_cells.keys(),key=itemgetter(0))
+max_x = max(painted_cells.keys(),key=itemgetter(0))
+min_y = min(painted_cells.keys(),key=itemgetter(1))
+max_y = max(painted_cells.keys(),key=itemgetter(1))
+
+output = ""
+for y in range(-1,6):
+    outputline = ""
+    for x in range(-1,43):
+        if (x,y) in painted_cells.keys():
+            if painted_cells[(x,y)]==1:
+                outputline += "▮"
+            else: 
+                outputline += " "
+        else:
+            outputline += " "
+    output +=  outputline+"\n"
+
+print(output)
+
+print(min_x)
+print(max_x)
+print(min_y)
+print(max_y)
+
 
