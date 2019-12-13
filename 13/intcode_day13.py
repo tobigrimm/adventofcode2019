@@ -145,57 +145,45 @@ def draw_board(grid, inq, outq):
 
 #
 
-def calc_board(start=0):
+def calc_board(start=None):
     """ start threads for the robot and the drawing function and return the drawed board coordinates"""
     instructions = []
     inqueue = queue.Queue()
     outqueue = queue.Queue()
-    board_grid = {(0, 0):start} # dict of painted coordinates, by default all are black -> 0   key is coords: (x,y), value is color (0,0):0
+    board_grid = {} # dict of painted coordinates, by default all are black -> 0   key is coords: (x,y), value is color (0,0):0
+    inqueue.put(start)
     instructions = list(orig_instructions)
     additional_mem = [0] * 999
     instructions.extend(additional_mem)
     # lets start a worker for robot and the drawing grid, they will block when waiting for an input
     with concurrent.futures.ThreadPoolExecutor() as executor:
         robot = executor.submit(calculate_output, instructions, inqueue, outqueue)
+        #
         board = executor.submit(draw_board, board_grid, outqueue, inqueue)
     # lets wait till the robot finishes to get
         if robot.result():
-            print("len:", len(board_grid))
-    return board_grid
+            return outqueue
 
-inputq = queue.Queue()
-inputq.put(0)
-outputq = queue.Queue()
+def grouper(iterable, n, fillvalue=None):
+    "grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
+    args = [iter(iterable)] * n
+    return itertools.zip_longest(*args, fillvalue=fillvalue)
+
+
 
 print("Part 1")
-print("Painted grid cells: %s" % len(calc_board()))
 
+grid = {}
+for x,y,id in grouper(list(calc_board().queue), 3):
+    grid[x,y] = id
+
+print(grid.keys())
+# get all block tiles (id 2)
+
+blocks = [key for (key, value) in grid.items() if value == 2]
+print("Blocks: %s" % len(blocks))
+sys.exit()
 print("Part 2")
-painted_cells = calc_board(start=1)
-from operator import itemgetter
-min_x = min(painted_cells.keys(),key=itemgetter(0))
-max_x = max(painted_cells.keys(),key=itemgetter(0))
-min_y = min(painted_cells.keys(),key=itemgetter(1))
-max_y = max(painted_cells.keys(),key=itemgetter(1))
 
-output = ""
-for y in range(-1,6):
-    outputline = ""
-    for x in range(-1,43):
-        if (x,y) in painted_cells.keys():
-            if painted_cells[(x,y)]==1:
-                outputline += "▮"
-            else: 
-                outputline += " "
-        else:
-            outputline += " "
-    output +=  outputline+"\n"
-
-print(output)
-
-print(min_x)
-print(max_x)
-print(min_y)
-print(max_y)
-
-
+# input 2 to get the game started
+# -1,0 is the score value
