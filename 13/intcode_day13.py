@@ -6,6 +6,7 @@ import itertools
 import operator
 import concurrent.futures
 import sys
+import pygame
 
 with open(sys.argv[1]) as inputfile:
     orig_instructions = [int(i) for i in inputfile.readline().strip().split(",")]
@@ -59,6 +60,7 @@ def calculate_output(memory, inputqueue, outputqueue):
                 modes.append(0)
         if ins == 99:
             # ALL MACHINES STOP
+            print("STAP")
             return lastprint
             break
         # IMPORTANT:
@@ -89,7 +91,6 @@ def calculate_output(memory, inputqueue, outputqueue):
             if modes[0] == 2:
                 temp_BP = BP
             memory[params[0]+temp_BP] = int(inputchar)
-
         if ins == 4:
             # printout the value or add it to the output buffer
             outputqueue.put(params[0])
@@ -110,59 +111,178 @@ def calculate_output(memory, inputqueue, outputqueue):
 
 def draw_board(grid, inq, outq):
     """draw on the board, track the coordinates of the robot and return new color of the next grid field"""
-    coord = (0,0)
-    cur_dir = 1 # start with abitrary definition of up :)
-    dir = [(-1,0),(0,-1),(1,0),(0,1)]  # list of delta_x, delta_y per direction. Order: LEFT, UP, RIGHT, DOWN rotate by getting the next index left/right :)
+    # Initialize pygame
+    pygame.init()
     
-    # give out the color of the start coordinates
-    cur_color = grid[coord]
-    outq.put(cur_color)
-    
-    while True:
-        draw_command  = inq.get(block=True,timeout=2)
-        # kill the job after 2 seconds without input
-        move_command  = inq.get(block=True)
-        # draw command: 0 means to paint the panel black, and 1 means to paint the panel white.
-        # move command: 0 means it should turn left 90 degrees, and 1 means it should turn right 90 degrees.
-        
-        # draw current positon
-        grid[coord] = draw_command
+    #colors:
+    # Define some colors
+    BLACK = (0, 0, 0)
+    WHITE = (255, 255, 255)
+    GREEN = (0, 255, 0)
+    RED = (255, 0, 0)
+    BLUE = (0, 0, 255)
+    LILA = (255, 0, 255)
+    # Set the HEIGHT and WIDTH of the screen
 
-        # move to next field
-        # turn left or right:
-        if move_command == 0:
-            cur_dir = (cur_dir - 1 ) % 4
-        elif move_command == 1:
-            cur_dir = (cur_dir + 1 ) % 4
+    WIDTH = 10
+    HEIGHT = 10
+    MARGIN = 2
+    WINDOW_SIZE = [50*(WIDTH+MARGIN), 50*(HEIGHT+MARGIN)]
+    screen = pygame.display.set_mode(WINDOW_SIZE)
+     
+    # Set title of screen
+    pygame.display.set_caption("Array Backed Grid")
+     
+    # Loop until the user clicks the close button.
+    done = False
+     
+    # Used to manage how fast the screen updates
+    clock = pygame.time.Clock()
+
+    # font
+    score_font = pygame.font.SysFont("Courier", 16)
+     
+    # -------- Main Program Loop -----------
+    while not done:
+        for event in pygame.event.get():  # User did something
+            if event.type == pygame.QUIT:  # If user clicked close
+                done = True  # Flag that we are done so we exit this loop
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                # User clicks the mouse. Get the position
+                pos = pygame.mouse.get_pos()
+                # Change the x/y screen coordinates to grid coordinates
+                column = pos[0] // (WIDTH + MARGIN)
+                row = pos[1] // (HEIGHT + MARGIN)
+                # Set that location to one
+                print("Click ", pos, "Grid coordinates: ", row, column)
+            elif event.type == pygame.KEYUP:
+                key = event.dict["key"]
+                if key == ord("q"):
+                    done = True
+                if key == 275:
+                    print("right pressed")
+                    outq.put(1)
+                if key == 276:
+                    print("left pressed")
+                    outq.put(-1)
+                if key == ord(" "):
+                    outq.put(0)
+        # Set the screen background
+    
+        screen.fill(BLACK)
+        # tiles:
+        """    0 is an empty tile. No game object appears in this tile.
+            1 is a wall tile. Walls are indestructible barriers.
+            2 is a block tile. Blocks can be broken by the ball.
+            3 is a horizontal paddle tile. The paddle is indestructible.
+            4 is a ball tile. The ball moves diagonally and bounces off objects.
+        """
+        if (-1,0) in grid.keys():
+            score = grid[(-1,0)]
+            score_text = score_font.render("Score: {0}".format(score), True, (255,255,255))
+            # Copy the text surface to the main surface
+            screen.blit(score_text, (35*(WIDTH+MARGIN), 46*(HEIGHT+MARGIN)))
+        else:
+            score = 0
+        # Draw the grid
+        for column in range(40):
+            for row in range(40):
+                color = WHITE
+                if grid[(row, column)] == 1:
+                    color = GREEN
+                if grid[(row, column)] == 2:
+                    color = RED
+                if grid[(row, column)] == 3:
+                    color = BLUE
+                if grid[(row, column)] == 4:
+                    color = LILA
+                pygame.draw.rect(screen,
+                                 color,
+                                 [(MARGIN + WIDTH) * row + MARGIN,
+                                  (MARGIN + HEIGHT) * column + MARGIN,
+                                  WIDTH,
+                                  HEIGHT])
+     
+        # Limit to 60 frames per second
+        clock.tick(10)
+     
+        # Go ahead and update the screen with what we've drawn.
+        pygame.display.flip()
+     
+    # Be IDLE friendly. If you forget this line, the program will 'hang'
+    # on exit.
+    pygame.quit()
+    return score 
         
-        # move 1 "forward" in cur_dir
-        coord = (coord[0]+dir[cur_dir][0], coord[1]+dir[cur_dir][1])
-        cur_color = 0 # by default field is black
-        
-        if coord in grid.keys():
-            cur_color = grid[coord]
-        outq.put(cur_color)
+        # give out the color of the start coordinates
+        # update 
+        #outq.put(cur_color)
 
 #
 
-def calc_board(start=None):
+def update_grid(grid,inq, outq):
+    ball_x = -1
+    paddle_x = -1
+    while True:
+        x  = inq.get(block=True)
+        y  = inq.get(block=True)
+        id  = inq.get(block=True)
+        # block while waiting 
+        # draw current positon
+        grid[(x,y)] = id
+        # if ball or paddle moves:
+        if id in (3,4):
+            if id == 4:
+                print("ball x:", x)
+                ball_x = x
+            if id == 3:
+                print("padle x:", x)
+                paddle_x = x
+        # move paddle on ball updates: 
+        if id == 4:
+            if paddle_x < ball_x:
+                print("move right")
+                pass
+                outq.put(1)
+            elif paddle_x > ball_x:
+                print("move left")
+                outq.put(-1)
+            else: 
+                print("stay")
+#
+                outq.put(0)
+
+        #print("new: (%s,%s): %s" %(x,y,id)) 
+
+def calc_board(graphic_mode=False,start=None):
     """ start threads for the robot and the drawing function and return the drawed board coordinates"""
     instructions = []
     inqueue = queue.Queue()
     outqueue = queue.Queue()
     board_grid = {} # dict of painted coordinates, by default all are black -> 0   key is coords: (x,y), value is color (0,0):0
-    inqueue.put(start)
+    for x in range(40):
+        for y in range(40):
+            board_grid[(x,y)]=0
     instructions = list(orig_instructions)
     additional_mem = [0] * 999
     instructions.extend(additional_mem)
+    if start:
+        instructions[0] = start
+        print("patched")
     # lets start a worker for robot and the drawing grid, they will block when waiting for an input
     with concurrent.futures.ThreadPoolExecutor() as executor:
         robot = executor.submit(calculate_output, instructions, inqueue, outqueue)
         #
-        board = executor.submit(draw_board, board_grid, outqueue, inqueue)
+        #board = draw_board(board_grid, outqueue, inqueue)
+        #update = update_grid(board_grid, outqueue)
+        if graphic_mode:
+            executor.submit(update_grid, board_grid, outqueue, inqueue)
+            board = executor.submit(draw_board, board_grid, outqueue, inqueue)
     # lets wait till the robot finishes to get
         if robot.result():
             return outqueue
+        if board.result():
+            print(board.result())
 
 def grouper(iterable, n, fillvalue=None):
     "grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
@@ -177,13 +297,12 @@ grid = {}
 for x,y,id in grouper(list(calc_board().queue), 3):
     grid[x,y] = id
 
-print(grid.keys())
 # get all block tiles (id 2)
 
 blocks = [key for (key, value) in grid.items() if value == 2]
 print("Blocks: %s" % len(blocks))
-sys.exit()
 print("Part 2")
-
+print("Please read the score from the scoreboard")
+calc_board(start=2, graphic_mode=True)
 # input 2 to get the game started
 # -1,0 is the score value
